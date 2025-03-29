@@ -1,5 +1,5 @@
 import { Client, Room, getStateCallbacks } from "colyseus.js";
-import { MyState, Player } from "../server/src/rooms/schema/MyRoomState";
+import { MyState, Player, Coin } from "../server/src/rooms/schema/MyRoomState";
 
 let currentRoom: Room<MyState> | null = null;
 let myPlayer: Player | null = null;
@@ -34,7 +34,12 @@ export function movePlayer(x: number, y: number) {
 
 export function getPlayerPosition() {
   if (myPlayer) {
-    return { x: myPlayer.x, y: myPlayer.y };
+    return { x: myPlayer.x, y: myPlayer.y, size: myPlayer.size };
   }
-  return { x: 0, y: 0 };
+  return { x: 0, y: 0, size: 1 };
+}
+
+export function getCoins() {
+  if (!currentRoom) return [];
+  return Array.from(currentRoom.state.coins.values());
 }
