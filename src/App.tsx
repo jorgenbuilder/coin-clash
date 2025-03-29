@@ -2,12 +2,45 @@ import { useEffect, useState } from "react";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import "./App.css";
-import { connect } from "./client";
+import { connect, movePlayer, getPlayerPosition } from "./client";
+
 function App() {
-  const [count, setCount] = useState(0);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     connect();
+
+    const updatePosition = () => {
+      setPosition(getPlayerPosition());
+      requestAnimationFrame(updatePosition);
+    };
+
+    requestAnimationFrame(updatePosition);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const speed = 1;
+      switch (event.key.toLowerCase()) {
+        case "w":
+          movePlayer(0, -speed);
+          break;
+        case "s":
+          movePlayer(0, speed);
+          break;
+        case "a":
+          movePlayer(-speed, 0);
+          break;
+        case "d":
+          movePlayer(speed, 0);
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, []);
 
   return (
@@ -20,18 +53,13 @@ function App() {
           <img src={reactLogo} className="logo react" alt="React logo" />
         </a>
       </div>
-      <h1>Vite + React</h1>
+      <h1>Coin Clash</h1>
       <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
+        <p>Use WASD to move</p>
         <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
+          Position: ({position.x.toFixed(1)}, {position.y.toFixed(1)})
         </p>
       </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
     </>
   );
 }
