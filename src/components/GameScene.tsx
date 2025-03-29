@@ -2,7 +2,12 @@ import { Canvas } from "@react-three/fiber";
 import { useEffect, useState, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Vector3 } from "three";
-import { movePlayer, getPlayerPosition, getCoins } from "../client";
+import {
+  movePlayer,
+  getPlayerPosition,
+  getCoins,
+  getOtherPlayers,
+} from "../client";
 
 function Coin({ position }: { position: Vector3 }) {
   return (
@@ -13,11 +18,25 @@ function Coin({ position }: { position: Vector3 }) {
   );
 }
 
+function Grid({ size, divisions }: { size: number; divisions: number }) {
+  return (
+    <gridHelper
+      args={[size, divisions, "#404040", "#202020"]}
+      position={[0, 0.1, 0]}
+    />
+  );
+}
+
 function Game() {
   const [coins, setCoins] = useState<Array<{ x: number; y: number }>>([]);
   const [playerPos, setPlayerPos] = useState({ x: 0, y: 0, size: 1 });
+  const [otherPlayers, setOtherPlayers] = useState<
+    Array<{ x: number; y: number; size: number }>
+  >([]);
   const visualPos = useRef({ x: 0, y: 0, size: 1 });
-  const velocity = useRef({ x: 0, y: 0 });
+  const visualOtherPlayers = useRef<
+    Map<number, { x: number; y: number; size: number }>
+  >(new Map());
   const keys = useRef({ w: false, s: false, a: false, d: false });
   const lastUpdate = useRef(0);
   const { camera } = useThree();
@@ -49,7 +68,6 @@ function Game() {
 
   useFrame((state) => {
     const now = state.clock.getElapsedTime();
-    const deltaTime = Math.min(now - lastUpdate.current, 1 / 30);
     lastUpdate.current = now;
 
     // Calculate movement direction
@@ -67,47 +85,18 @@ function Game() {
       dy /= length;
     }
 
-    // Movement parameters
-    const maxSpeed = 8.0;
-    const acceleration = 0.5;
-    const deceleration = 0.92;
-    const sizePenalty = 1 / Math.pow(playerPos.size, 0.15);
-
-    // Calculate target velocity
-    const targetSpeed = maxSpeed * sizePenalty;
-    const targetVelocity = {
-      x: dx * targetSpeed,
-      y: dy * targetSpeed,
-    };
-
-    // Apply acceleration or deceleration
-    if (dx !== 0 || dy !== 0) {
-      velocity.current.x +=
-        (targetVelocity.x - velocity.current.x) * acceleration;
-      velocity.current.y +=
-        (targetVelocity.y - velocity.current.y) * acceleration;
-    } else {
-      velocity.current.x *= deceleration;
-      velocity.current.y *= deceleration;
-    }
-
     // Apply movement
-    if (
-      Math.abs(velocity.current.x) > 0.01 ||
-      Math.abs(velocity.current.y) > 0.01
-    ) {
-      movePlayer(
-        velocity.current.x * deltaTime,
-        velocity.current.y * deltaTime
-      );
+    if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
+      movePlayer(dx, dy);
     }
 
     // Update state
     setPlayerPos(getPlayerPosition());
     setCoins(getCoins());
+    setOtherPlayers(getOtherPlayers());
 
     // Smoothly interpolate visual position to server position
-    const positionInterpSpeed = 0.2; // How quickly visual position catches up to server position
+    const positionInterpSpeed = 0.2;
     visualPos.current.x +=
       (playerPos.x - visualPos.current.x) * positionInterpSpeed;
     visualPos.current.y +=
@@ -115,12 +104,33 @@ function Game() {
     visualPos.current.size +=
       (playerPos.size - visualPos.current.size) * positionInterpSpeed;
 
+    // Smoothly interpolate other players
+    otherPlayers.forEach((player, index) => {
+      if (!visualOtherPlayers.current.has(index)) {
+        visualOtherPlayers.current.set(index, { ...player });
+      } else {
+        const visual = visualOtherPlayers.current.get(index)!;
+        visual.x += (player.x - visual.x) * positionInterpSpeed;
+        visual.y += (player.y - visual.y) * positionInterpSpeed;
+        visual.size += (player.size - visual.size) * positionInterpSpeed;
+      }
+    });
+
+    // Remove players that no longer exist
+    for (const [index] of visualOtherPlayers.current) {
+      if (!otherPlayers[index]) {
+        visualOtherPlayers.current.delete(index);
+      }
+    }
+
     // Update camera target
     cameraTarget.current.x = playerPos.x;
     cameraTarget.current.y = playerPos.y;
 
-    // Smooth camera interpolation
-    const cameraHeight = 20;
+    // Dynamic camera zoom based on player size
+    const baseHeight = 20;
+    const zoomFactor = 0.5;
+    const cameraHeight = baseHeight + playerPos.size * zoomFactor;
     const cameraInterpSpeed = 0.1;
 
     // Lerp camera position (X and Y only)
@@ -142,6 +152,8 @@ function Game() {
     <>
       <ambientLight intensity={0.5} />
       <pointLight position={[10, 10, 10]} />
+
+      {/* Player */}
       <mesh
         position={[visualPos.current.x, 0, visualPos.current.y]}
         scale={visualPos.current.size}
@@ -149,13 +161,30 @@ function Game() {
         <sphereGeometry args={[0.5, 32, 32]} />
         <meshStandardMaterial color="hotpink" />
       </mesh>
+
+      {/* Other Players */}
+      {Array.from(visualOtherPlayers.current.values()).map((player, index) => (
+        <mesh
+          key={index}
+          position={[player.x, 0, player.y]}
+          scale={player.size}
+        >
+          <sphereGeometry args={[0.5, 32, 32]} />
+          <meshStandardMaterial color="blue" />
+        </mesh>
+      ))}
+
+      {/* Coins */}
       {coins.map((coin, index) => (
         <Coin key={index} position={new Vector3(coin.x, 0, coin.y)} />
       ))}
+
+      {/* Floor with Grid */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]}>
-        <planeGeometry args={[100, 100]} />
+        <planeGeometry args={[200, 200]} />
         <meshStandardMaterial color="#303030" />
       </mesh>
+      <Grid size={200} divisions={20} />
     </>
   );
 }

@@ -32,6 +32,12 @@ export function movePlayer(x: number, y: number) {
   }
 }
 
+export function restartGame() {
+  if (currentRoom) {
+    currentRoom.send("restart");
+  }
+}
+
 export function getPlayerPosition() {
   if (myPlayer) {
     return { x: myPlayer.x, y: myPlayer.y, size: myPlayer.size };
@@ -42,4 +48,28 @@ export function getPlayerPosition() {
 export function getCoins() {
   if (!currentRoom) return [];
   return Array.from(currentRoom.state.coins.values());
+}
+
+export function getOtherPlayers() {
+  if (!currentRoom) return [];
+  return Array.from(currentRoom.state.players.entries())
+    .filter(([sessionId]) => sessionId !== currentRoom?.sessionId)
+    .map(([_, player]) => ({
+      x: player.x,
+      y: player.y,
+      size: player.size,
+    }));
+}
+
+export function getLeaderboard() {
+  if (!currentRoom) return [];
+  return Array.from(currentRoom.state.players.entries())
+    .map(([sessionId, player]) => ({
+      name: sessionId.startsWith("bot_")
+        ? `Bot ${sessionId.split("_")[1]}`
+        : "You",
+      size: player.size,
+      isBot: sessionId.startsWith("bot_"),
+    }))
+    .sort((a, b) => b.size - a.size);
 }

@@ -14,6 +14,32 @@ body {
   overflow: hidden;
 }
 
+.game-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.restart-button {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  padding: 10px 20px;
+  font-size: 16px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  z-index: 1000;
+}
+
+.restart-button:hover {
+  background-color: #45a049;
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;
@@ -48,4 +74,52 @@ body {
 
 .read-the-docs {
   color: #888;
+}
+
+.leaderboard {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 10px;
+  border-radius: 5px;
+  color: white;
+  min-width: 200px;
+  z-index: 1000;
+}
+
+.leaderboard h3 {
+  margin: 0 0 10px 0;
+  text-align: center;
+}
+
+.leaderboard-entry {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px;
+  margin: 2px 0;
+  border-radius: 3px;
+}
+
+.leaderboard-entry.player {
+  background-color: rgba(76, 175, 80, 0.3);
+}
+
+.leaderboard-entry.bot {
+  background-color: rgba(33, 150, 243, 0.3);
+}
+
+.leaderboard-entry .rank {
+  width: 30px;
+  text-align: right;
+  margin-right: 10px;
+}
+
+.leaderboard-entry .name {
+  flex-grow: 1;
+}
+
+.leaderboard-entry .size {
+  width: 50px;
+  text-align: right;
 }
