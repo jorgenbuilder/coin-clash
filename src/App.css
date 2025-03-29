@@ -14,11 +14,19 @@ body {
   overflow: hidden;
 }
 
-.game-container {
+.app {
   position: relative;
   width: 100vw;
   height: 100vh;
+  display: flex;
   overflow: hidden;
+}
+
+.game-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #1a1a1a;
 }
 
 .controls {
@@ -94,50 +102,78 @@ body {
   color: #888;
 }
 
-.leaderboard {
+.start-overlay {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  background-color: rgba(0, 0, 0, 0.7);
-  padding: 10px;
-  border-radius: 5px;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 10;
+}
+
+.start-button {
+  padding: 1rem 2rem;
+  font-size: 1.5rem;
+  background: #4caf50;
   color: white;
-  min-width: 200px;
-  z-index: 1000;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.start-button:hover {
+  background: #45a049;
+}
+
+.leaderboard {
+  position: fixed;
+  right: 20px;
+  top: 20px;
+  width: 250px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 8px;
+  padding: 1rem;
+  color: white;
+  z-index: 100;
 }
 
 .leaderboard h3 {
-  margin: 0 0 10px 0;
+  margin: 0 0 1rem 0;
   text-align: center;
+  color: #4caf50;
 }
 
 .leaderboard-entry {
   display: flex;
   justify-content: space-between;
-  padding: 5px;
-  margin: 2px 0;
-  border-radius: 3px;
-}
-
-.leaderboard-entry.player {
-  background-color: rgba(76, 175, 80, 0.3);
+  align-items: center;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
 }
 
 .leaderboard-entry.bot {
-  background-color: rgba(33, 150, 243, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+  color: #888;
 }
 
 .leaderboard-entry .rank {
   width: 30px;
-  text-align: right;
-  margin-right: 10px;
+  text-align: center;
 }
 
 .leaderboard-entry .name {
-  flex-grow: 1;
+  flex: 1;
+  margin: 0 1rem;
 }
 
 .leaderboard-entry .size {
-  width: 50px;
+  width: 60px;
   text-align: right;
 }

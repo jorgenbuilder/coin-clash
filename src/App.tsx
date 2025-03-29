@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import "./App.css";
-import { connect, restartGame, getLeaderboard } from "./client";
+import { connect, getLeaderboard } from "./client";
 import { GameScene } from "./components/GameScene";
-import { GameSceneSVG } from "./components/GameSceneSVG";
+
+interface LeaderboardEntry {
+  name: string;
+  size: number;
+  isBot: boolean;
+}
 
 function Leaderboard({
   entries,
@@ -26,44 +31,56 @@ function Leaderboard({
   );
 }
 
+function StartButton({ onStart }: { onStart: () => void }) {
+  return (
+    <div className="start-overlay">
+      <button className="start-button" onClick={onStart}>
+        Start Game
+      </button>
+    </div>
+  );
+}
+
 function App() {
-  const [connected, setConnected] = useState(false);
-  const [useSVG, setUseSVG] = useState(false);
-  const [leaderboard, setLeaderboard] = useState<
-    Array<{ name: string; size: number; isBot: boolean }>
-  >([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isInGame, setIsInGame] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
   useEffect(() => {
-    connect().then(() => {
-      setConnected(true);
-    });
+    const setupConnection = async () => {
+      const room = await connect();
+      if (room) {
+        setIsConnected(true);
+        // Update leaderboard every second
+        const interval = setInterval(() => {
+          setLeaderboard(getLeaderboard());
+        }, 1000);
+        return () => clearInterval(interval);
+      }
+    };
+
+    setupConnection();
   }, []);
 
-  useEffect(() => {
-    if (connected) {
-      const interval = setInterval(() => {
-        setLeaderboard(getLeaderboard());
-      }, 100);
-      return () => clearInterval(interval);
-    }
-  }, [connected]);
+  const handleStart = () => {
+    setIsInGame(true);
+  };
 
-  if (!connected) {
+  const handleGameOver = () => {
+    setIsInGame(false);
+  };
+
+  if (!isConnected) {
     return <div>Connecting...</div>;
   }
 
   return (
-    <div className="game-container">
-      <div className="controls">
-        <button className="restart-button" onClick={restartGame}>
-          Restart Game
-        </button>
-        <button className="renderer-toggle" onClick={() => setUseSVG(!useSVG)}>
-          Switch to {useSVG ? "3D" : "2D"}
-        </button>
+    <div className="app">
+      <div className="game-container">
+        <GameScene onGameOver={handleGameOver} />
+        {!isInGame && <StartButton onStart={handleStart} />}
       </div>
       <Leaderboard entries={leaderboard} />
-      {useSVG ? <GameSceneSVG /> : <GameScene />}
     </div>
   );
 }

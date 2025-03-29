@@ -1,5 +1,5 @@
 import { Canvas } from "@react-three/fiber";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Vector3, Raycaster, Plane, InstancedMesh, Matrix4 } from "three";
 import {
@@ -7,9 +7,14 @@ import {
   getPlayerPosition,
   getCoins,
   getOtherPlayers,
+  joinGame,
 } from "../client";
 
 const WORLD_SIZE = 1000;
+
+interface GameSceneProps {
+  onGameOver: () => void;
+}
 
 function InstancedCoins({ coins }: { coins: Array<{ x: number; y: number }> }) {
   const meshRef = useRef<InstancedMesh>(null);
@@ -43,7 +48,7 @@ function Grid({ size, divisions }: { size: number; divisions: number }) {
   );
 }
 
-function Game() {
+function Game({ onGameOver }: GameSceneProps) {
   const [coins, setCoins] = useState<Array<{ x: number; y: number }>>([]);
   const [playerPos, setPlayerPos] = useState({
     x: 0,
@@ -64,6 +69,11 @@ function Game() {
   const raycaster = useRef(new Raycaster());
   const plane = useRef(new Plane(new Vector3(0, 1, 0), 0));
 
+  useEffect(() => {
+    // Join the game when component mounts
+    joinGame();
+  }, []);
+
   useFrame((state) => {
     const now = state.clock.getElapsedTime();
     lastUpdate.current = now;
@@ -77,9 +87,16 @@ function Game() {
     movePlayer(mouseWorldPos.x, mouseWorldPos.z);
 
     // Update state
-    setPlayerPos(getPlayerPosition());
+    const newPlayerPos = getPlayerPosition();
+    setPlayerPos(newPlayerPos);
     setCoins(getCoins());
     setOtherPlayers(getOtherPlayers());
+
+    // Check if player was eaten (size is 0 or undefined)
+    if (!newPlayerPos || newPlayerPos.size <= 0) {
+      onGameOver();
+      return;
+    }
 
     // Smoothly interpolate visual position to server position
     const positionInterpSpeed = 0.1;
@@ -174,11 +191,11 @@ function Game() {
   );
 }
 
-export function GameScene() {
+export function GameScene({ onGameOver }: GameSceneProps) {
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
       <Canvas camera={{ position: [0, 20, 0], fov: 75 }}>
-        <Game />
+        <Game onGameOver={onGameOver} />
       </Canvas>
     </div>
   );

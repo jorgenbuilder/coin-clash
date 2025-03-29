@@ -3,60 +3,85 @@ import { MyState, Player, Coin } from "./schema/MyRoomState";
 
 const WORLD_SIZE = 1000;
 const COIN_COUNT = 5000;
-const BOT_COUNT = WORLD_SIZE / 100;
+const BOT_COUNT = WORLD_SIZE / 20;
 const COIN_RESPAWN_TIME = 5;
 const BOT_UPDATE_INTERVAL = 1 / 60;
 const BASE_SPEED = 0.2;
+const MAX_SIZE = 50;
+const DECAY_THRESHOLD = 40; // Start decaying when size exceeds this
+const DECAY_RATE = 0.1; // How much size to lose per second
+const DECAY_INTERVAL = 1 / 60; // Update decay every frame
 
 export class MyRoom extends Room<MyState> {
   private coinRespawnTimers: Map<string, NodeJS.Timeout> = new Map();
   private botUpdateInterval: NodeJS.Timeout | null = null;
+  private decayInterval: NodeJS.Timeout | null = null;
 
-  // Called when the room is created
-  onCreate() {
+  async onCreate() {
     console.log("Room created");
     this.setState(new MyState());
     this.onMessage("move", this.handlePlayerMove.bind(this));
     this.onMessage("restart", this.handleRestart.bind(this));
+    this.onMessage("join", this.handleJoin.bind(this));
+
+    // Set room options
+    this.maxClients = 100;
+    this.autoDispose = false;
+    this.roomId = "main";
+
+    // Initialize the game state immediately
+    this.spawnCoins();
+    this.spawnBots();
+    this.startDecayInterval();
+
+    // Lock this room to prevent additional rooms from being created
+    await this.lock();
+  }
+
+  private handleJoin(client: Client) {
+    // Create player
+    const player = new Player();
+    player.x = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
+    player.y = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
+    player.size = 1;
+    player.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
+    this.state.players.set(client.sessionId, player);
   }
 
   // Called when a client joins the room
   onJoin(client: Client) {
     console.log("Client joined:", client.sessionId);
 
-    // Spawn coins for first player
-    if (this.state.players.size === 0) {
-      this.spawnCoins();
-      this.spawnBots();
+    // Create player if they don't exist
+    if (!this.state.players.has(client.sessionId)) {
+      const player = new Player();
+      player.x = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
+      player.y = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
+      player.size = 1;
+      player.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
+      this.state.players.set(client.sessionId, player);
     }
-
-    // Create player
-    const player = new Player();
-    player.x = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
-    player.y = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
-    player.size = 1;
-    this.state.players.set(client.sessionId, player);
   }
 
   // Called when a client leaves the room
   onLeave(client: Client) {
     console.log("Client left:", client.sessionId);
     this.state.players.delete(client.sessionId);
-
-    // Clean up timers if last player
-    if (this.state.players.size === 0) {
-      this.coinRespawnTimers.forEach((timer) => clearTimeout(timer));
-      this.coinRespawnTimers.clear();
-      if (this.botUpdateInterval) {
-        clearInterval(this.botUpdateInterval);
-        this.botUpdateInterval = null;
-      }
-    }
   }
 
   // Called when the room is disposed
   onDispose() {
     console.log("Room disposed");
+    this.coinRespawnTimers.forEach((timer) => clearTimeout(timer));
+    this.coinRespawnTimers.clear();
+    if (this.botUpdateInterval) {
+      clearInterval(this.botUpdateInterval);
+      this.botUpdateInterval = null;
+    }
+    if (this.decayInterval) {
+      clearInterval(this.decayInterval);
+      this.decayInterval = null;
+    }
   }
 
   private spawnCoins() {
@@ -210,6 +235,24 @@ export class MyRoom extends Room<MyState> {
     });
   }
 
+  private startDecayInterval() {
+    this.decayInterval = setInterval(() => {
+      this.applyDecay();
+    }, DECAY_INTERVAL * 1000);
+  }
+
+  private applyDecay() {
+    this.state.players.forEach((player) => {
+      if (player.size > DECAY_THRESHOLD) {
+        // Calculate decay based on how much over threshold
+        const overThreshold = player.size - DECAY_THRESHOLD;
+        const decayAmount =
+          (overThreshold / (MAX_SIZE - DECAY_THRESHOLD)) * DECAY_RATE;
+        player.size = Math.max(DECAY_THRESHOLD, player.size - decayAmount);
+      }
+    });
+  }
+
   private checkCollisions(playerId: string) {
     const player = this.state.players.get(playerId);
     if (!player) return;
@@ -219,11 +262,13 @@ export class MyRoom extends Room<MyState> {
       const dx = coin.x - player.x;
       const dy = coin.y - player.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      // Increased collision distance for easier collection
-      const collisionDistance = player.size * 0.6; // Increased from 0.3 to 0.6
+      const collisionDistance = player.size * 0.6;
 
       if (distance < collisionDistance) {
-        player.size += 0.1;
+        // Only grow if under max size
+        if (player.size < MAX_SIZE) {
+          player.size = Math.min(MAX_SIZE, player.size + 0.1);
+        }
         this.state.coins.delete(coinId);
 
         const respawnTimer = setTimeout(() => {
@@ -239,13 +284,16 @@ export class MyRoom extends Room<MyState> {
         const dx = otherPlayer.x - player.x;
         const dy = otherPlayer.y - player.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-
-        // Increased collision distance for easier eating
-        const requiredDistance = (player.size - otherPlayer.size) * 0.6; // Increased from 0.3 to 0.6
+        const requiredDistance = (player.size - otherPlayer.size) * 0.6;
 
         if (distance < requiredDistance) {
-          // Player ate other player
-          player.size += otherPlayer.size * 0.5;
+          // Only grow if under max size
+          if (player.size < MAX_SIZE) {
+            player.size = Math.min(
+              MAX_SIZE,
+              player.size + otherPlayer.size * 0.5
+            );
+          }
 
           // If it's a bot, respawn it
           if (otherId.startsWith("bot_")) {

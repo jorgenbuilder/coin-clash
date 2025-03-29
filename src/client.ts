@@ -13,7 +13,15 @@ const previousStates = new Map<
 
 export async function connect() {
   const client = new Client("http://localhost:2567");
-  currentRoom = await client.joinOrCreate<MyState>("my_room");
+
+  // Always join the same room
+  try {
+    currentRoom = await client.joinById<MyState>("main");
+  } catch {
+    // If the room doesn't exist, create it with a fixed ID
+    currentRoom = await client.create<MyState>("room", { roomId: "main" });
+  }
+
   if (!currentRoom) return null;
 
   const $ = getStateCallbacks<MyState>(currentRoom);
@@ -57,6 +65,15 @@ export async function connect() {
   });
 
   return currentRoom;
+}
+
+export async function joinGame() {
+  if (!currentRoom) {
+    currentRoom = await connect();
+  }
+  if (currentRoom) {
+    currentRoom.send("join");
+  }
 }
 
 export function movePlayer(mouseX: number, mouseY: number) {
