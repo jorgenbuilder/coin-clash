@@ -21,23 +21,41 @@ body {
   overflow: hidden;
 }
 
-.restart-button {
+.controls {
   position: absolute;
   top: 20px;
   right: 20px;
+  display: flex;
+  gap: 10px;
+  z-index: 1000;
+}
+
+.restart-button,
+.renderer-toggle {
   padding: 10px 20px;
   font-size: 16px;
-  background-color: #4caf50;
   color: white;
   border: none;
   border-radius: 5px;
   cursor: pointer;
   transition: background-color 0.3s;
-  z-index: 1000;
+  min-width: 120px;
+}
+
+.restart-button {
+  background-color: #4caf50;
 }
 
 .restart-button:hover {
   background-color: #45a049;
+}
+
+.renderer-toggle {
+  background-color: #2196f3;
+}
+
+.renderer-toggle:hover {
+  background-color: #1976d2;
 }
 
 .logo {

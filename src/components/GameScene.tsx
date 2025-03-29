@@ -1,7 +1,7 @@
 import { Canvas } from "@react-three/fiber";
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Vector3 } from "three";
+import { Vector3, Raycaster, Plane, InstancedMesh, Matrix4 } from "three";
 import {
   movePlayer,
   getPlayerPosition,
@@ -9,12 +9,28 @@ import {
   getOtherPlayers,
 } from "../client";
 
-function Coin({ position }: { position: Vector3 }) {
+const WORLD_SIZE = 1000;
+
+function InstancedCoins({ coins }: { coins: Array<{ x: number; y: number }> }) {
+  const meshRef = useRef<InstancedMesh>(null);
+  const matrix = new Matrix4();
+
+  useFrame(() => {
+    if (!meshRef.current) return;
+
+    coins.forEach((coin, i) => {
+      matrix.setPosition(coin.x, 0, coin.y);
+      meshRef.current!.setMatrixAt(i, matrix);
+    });
+
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  });
+
   return (
-    <mesh position={position}>
+    <instancedMesh ref={meshRef} args={[undefined, undefined, coins.length]}>
       <sphereGeometry args={[0.2, 16, 16]} />
-      <meshStandardMaterial color="gold" />
-    </mesh>
+      <meshBasicMaterial color="gold" />
+    </instancedMesh>
   );
 }
 
@@ -29,66 +45,36 @@ function Grid({ size, divisions }: { size: number; divisions: number }) {
 
 function Game() {
   const [coins, setCoins] = useState<Array<{ x: number; y: number }>>([]);
-  const [playerPos, setPlayerPos] = useState({ x: 0, y: 0, size: 1 });
+  const [playerPos, setPlayerPos] = useState({
+    x: 0,
+    y: 0,
+    size: 1,
+    color: "blue",
+  });
   const [otherPlayers, setOtherPlayers] = useState<
-    Array<{ x: number; y: number; size: number }>
+    Array<{ x: number; y: number; size: number; color: string }>
   >([]);
-  const visualPos = useRef({ x: 0, y: 0, size: 1 });
+  const visualPos = useRef({ x: 0, y: 0, size: 1, color: "blue" });
   const visualOtherPlayers = useRef<
-    Map<number, { x: number; y: number; size: number }>
+    Map<number, { x: number; y: number; size: number; color: string }>
   >(new Map());
-  const keys = useRef({ w: false, s: false, a: false, d: false });
   const lastUpdate = useRef(0);
-  const { camera } = useThree();
+  const { camera, mouse } = useThree();
   const cameraTarget = useRef({ x: 0, y: 0 });
-
-  // Handle key events
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (key in keys.current) {
-        keys.current[key as keyof typeof keys.current] = true;
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (key in keys.current) {
-        keys.current[key as keyof typeof keys.current] = false;
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, []);
+  const raycaster = useRef(new Raycaster());
+  const plane = useRef(new Plane(new Vector3(0, 1, 0), 0));
 
   useFrame((state) => {
     const now = state.clock.getElapsedTime();
     lastUpdate.current = now;
 
-    // Calculate movement direction
-    let dx = 0;
-    let dy = 0;
-    if (keys.current.w) dy -= 1;
-    if (keys.current.s) dy += 1;
-    if (keys.current.a) dx -= 1;
-    if (keys.current.d) dx += 1;
+    // Calculate mouse position in world space using raycaster
+    raycaster.current.setFromCamera(mouse, camera);
+    const mouseWorldPos = new Vector3();
+    raycaster.current.ray.intersectPlane(plane.current, mouseWorldPos);
 
-    // Normalize diagonal movement
-    if (dx !== 0 && dy !== 0) {
-      const length = Math.sqrt(dx * dx + dy * dy);
-      dx /= length;
-      dy /= length;
-    }
-
-    // Apply movement
-    if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
-      movePlayer(dx, dy);
-    }
+    // Apply movement based on mouse position
+    movePlayer(mouseWorldPos.x, mouseWorldPos.z);
 
     // Update state
     setPlayerPos(getPlayerPosition());
@@ -96,15 +82,19 @@ function Game() {
     setOtherPlayers(getOtherPlayers());
 
     // Smoothly interpolate visual position to server position
-    const positionInterpSpeed = 0.2;
+    const positionInterpSpeed = 0.1;
+    const sizeInterpSpeed = 0.05;
+
+    // Position interpolation with separate X and Z components
     visualPos.current.x +=
       (playerPos.x - visualPos.current.x) * positionInterpSpeed;
     visualPos.current.y +=
       (playerPos.y - visualPos.current.y) * positionInterpSpeed;
     visualPos.current.size +=
-      (playerPos.size - visualPos.current.size) * positionInterpSpeed;
+      (playerPos.size - visualPos.current.size) * sizeInterpSpeed;
+    visualPos.current.color = playerPos.color;
 
-    // Smoothly interpolate other players
+    // Smoothly interpolate other players with the same speeds
     otherPlayers.forEach((player, index) => {
       if (!visualOtherPlayers.current.has(index)) {
         visualOtherPlayers.current.set(index, { ...player });
@@ -112,7 +102,8 @@ function Game() {
         const visual = visualOtherPlayers.current.get(index)!;
         visual.x += (player.x - visual.x) * positionInterpSpeed;
         visual.y += (player.y - visual.y) * positionInterpSpeed;
-        visual.size += (player.size - visual.size) * positionInterpSpeed;
+        visual.size += (player.size - visual.size) * sizeInterpSpeed;
+        visual.color = player.color;
       }
     });
 
@@ -127,20 +118,19 @@ function Game() {
     cameraTarget.current.x = playerPos.x;
     cameraTarget.current.y = playerPos.y;
 
-    // Dynamic camera zoom based on player size
+    // Dynamic camera zoom based on player size with smoother interpolation
     const baseHeight = 20;
     const zoomFactor = 0.5;
-    const cameraHeight = baseHeight + playerPos.size * zoomFactor;
-    const cameraInterpSpeed = 0.1;
+    const targetCameraHeight = baseHeight + playerPos.size * zoomFactor;
+    const cameraInterpSpeed = 0.05;
 
-    // Lerp camera position (X and Y only)
-    camera.position.x =
-      camera.position.x +
+    // Lerp camera position with separate components
+    camera.position.x +=
       (cameraTarget.current.x - camera.position.x) * cameraInterpSpeed;
-    camera.position.z =
-      camera.position.z +
+    camera.position.z +=
       (cameraTarget.current.y - camera.position.z) * cameraInterpSpeed;
-    camera.position.y = cameraHeight;
+    camera.position.y +=
+      (targetCameraHeight - camera.position.y) * cameraInterpSpeed;
 
     // Lock camera rotation to top-down view
     camera.rotation.x = -Math.PI / 2;
@@ -150,16 +140,13 @@ function Game() {
 
   return (
     <>
-      <ambientLight intensity={0.5} />
-      <pointLight position={[10, 10, 10]} />
-
       {/* Player */}
       <mesh
         position={[visualPos.current.x, 0, visualPos.current.y]}
         scale={visualPos.current.size}
       >
         <sphereGeometry args={[0.5, 32, 32]} />
-        <meshStandardMaterial color="hotpink" />
+        <meshBasicMaterial color={visualPos.current.color} />
       </mesh>
 
       {/* Other Players */}
@@ -170,21 +157,19 @@ function Game() {
           scale={player.size}
         >
           <sphereGeometry args={[0.5, 32, 32]} />
-          <meshStandardMaterial color="blue" />
+          <meshBasicMaterial color={player.color} />
         </mesh>
       ))}
 
       {/* Coins */}
-      {coins.map((coin, index) => (
-        <Coin key={index} position={new Vector3(coin.x, 0, coin.y)} />
-      ))}
+      <InstancedCoins coins={coins} />
 
       {/* Floor with Grid */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]}>
-        <planeGeometry args={[200, 200]} />
-        <meshStandardMaterial color="#303030" />
+        <planeGeometry args={[WORLD_SIZE, WORLD_SIZE]} />
+        <meshBasicMaterial color="#000" />
       </mesh>
-      <Grid size={200} divisions={20} />
+      <Grid size={WORLD_SIZE} divisions={WORLD_SIZE / 5} />
     </>
   );
 }

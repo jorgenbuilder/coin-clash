@@ -1,12 +1,8 @@
 import { useEffect, useState } from "react";
 import "./App.css";
-import {
-  connect,
-  getPlayerPosition,
-  restartGame,
-  getLeaderboard,
-} from "./client";
+import { connect, restartGame, getLeaderboard } from "./client";
 import { GameScene } from "./components/GameScene";
+import { GameSceneSVG } from "./components/GameSceneSVG";
 
 function Leaderboard({
   entries,
@@ -32,6 +28,7 @@ function Leaderboard({
 
 function App() {
   const [connected, setConnected] = useState(false);
+  const [useSVG, setUseSVG] = useState(false);
   const [leaderboard, setLeaderboard] = useState<
     Array<{ name: string; size: number; isBot: boolean }>
   >([]);
@@ -57,11 +54,16 @@ function App() {
 
   return (
     <div className="game-container">
-      <button className="restart-button" onClick={restartGame}>
-        Restart Game
-      </button>
+      <div className="controls">
+        <button className="restart-button" onClick={restartGame}>
+          Restart Game
+        </button>
+        <button className="renderer-toggle" onClick={() => setUseSVG(!useSVG)}>
+          Switch to {useSVG ? "3D" : "2D"}
+        </button>
+      </div>
       <Leaderboard entries={leaderboard} />
-      <GameScene />
+      {useSVG ? <GameSceneSVG /> : <GameScene />}
     </div>
   );
 }

@@ -1,11 +1,12 @@
 import { Room, Client } from "@colyseus/core";
 import { MyState, Player, Coin } from "./schema/MyRoomState";
 
-const WORLD_SIZE = 200; // Increased from 100
-const COIN_COUNT = 500; // Increased from 100
-const BOT_COUNT = 5;
-const COIN_RESPAWN_TIME = 5; // seconds
-const BOT_UPDATE_INTERVAL = 0.1; // Reduced from 0.5 for smoother movement
+const WORLD_SIZE = 1000;
+const COIN_COUNT = 5000;
+const BOT_COUNT = WORLD_SIZE / 100;
+const COIN_RESPAWN_TIME = 5;
+const BOT_UPDATE_INTERVAL = 1 / 60;
+const BASE_SPEED = 0.2;
 
 export class MyRoom extends Room<MyState> {
   private coinRespawnTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -80,6 +81,7 @@ export class MyRoom extends Room<MyState> {
       bot.x = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
       bot.y = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
       bot.size = 1;
+      bot.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
       this.state.players.set(botId, bot);
     }
 
@@ -91,15 +93,13 @@ export class MyRoom extends Room<MyState> {
   }
 
   private calculateSpeed(size: number): number {
-    const baseSpeed = 0.5;
-    const sizePenalty = 1 / Math.pow(size, 0.4); // Increased from 0.15 to 0.4 for stronger size penalty
-    return baseSpeed * sizePenalty;
+    const sizePenalty = 1 / Math.pow(size, 0.4);
+    return BASE_SPEED * sizePenalty;
   }
 
   private updateBots() {
     this.state.players.forEach((player, id) => {
       if (id.startsWith("bot_")) {
-        // Bot movement logic
         const nearestTarget = this.findNearestTarget(
           player.x,
           player.y,
@@ -111,13 +111,8 @@ export class MyRoom extends Room<MyState> {
           const length = Math.sqrt(dx * dx + dy * dy);
           if (length > 0) {
             const speed = this.calculateSpeed(player.size);
-
-            // Add slight randomness to movement for more natural behavior
-            const randomOffset = 0.05;
-            player.x +=
-              (dx / length) * speed + (Math.random() - 0.5) * randomOffset;
-            player.y +=
-              (dy / length) * speed + (Math.random() - 0.5) * randomOffset;
+            player.x += (dx / length) * speed;
+            player.y += (dy / length) * speed;
 
             // Keep bot in bounds
             player.x = Math.max(
@@ -129,7 +124,6 @@ export class MyRoom extends Room<MyState> {
               Math.min(WORLD_SIZE / 2, player.y)
             );
 
-            // Check collisions for bots too
             this.checkCollisions(id);
           }
         }
@@ -157,7 +151,7 @@ export class MyRoom extends Room<MyState> {
     });
 
     // Check other players (if they're smaller)
-    this.state.players.forEach((player, id) => {
+    this.state.players.forEach((player) => {
       if (player.size < size) {
         const dx = player.x - x;
         const dy = player.y - y;
@@ -172,22 +166,32 @@ export class MyRoom extends Room<MyState> {
     return nearest;
   }
 
-  private handlePlayerMove(client: Client, message: { x: number; y: number }) {
+  private handlePlayerMove(
+    client: Client,
+    message: { mouseX: number; mouseY: number }
+  ) {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
-    const speed = this.calculateSpeed(player.size);
-    player.x += message.x * speed;
-    player.y += message.y * speed;
+    // Calculate unit vector from player to mouse position
+    const dx = message.mouseX - player.x;
+    const dy = message.mouseY - player.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
 
-    // Keep player in bounds
-    player.x = Math.max(-WORLD_SIZE / 2, Math.min(WORLD_SIZE / 2, player.x));
-    player.y = Math.max(-WORLD_SIZE / 2, Math.min(WORLD_SIZE / 2, player.y));
+    if (length > 0) {
+      const speed = this.calculateSpeed(player.size);
+      player.x += (dx / length) * speed;
+      player.y += (dy / length) * speed;
 
-    this.checkCollisions(client.sessionId);
+      // Keep player in bounds
+      player.x = Math.max(-WORLD_SIZE / 2, Math.min(WORLD_SIZE / 2, player.x));
+      player.y = Math.max(-WORLD_SIZE / 2, Math.min(WORLD_SIZE / 2, player.y));
+
+      this.checkCollisions(client.sessionId);
+    }
   }
 
-  private handleRestart(client: Client) {
+  private handleRestart() {
     // Clear all coins and respawn them
     this.state.coins.clear();
     this.coinRespawnTimers.forEach((timer) => clearTimeout(timer));
