@@ -16,6 +16,11 @@ export class Player extends Schema {
   @type("number") targetY: number = 0;
 }
 
+export class FilteredState extends Schema {
+  @type({ map: Player }) players = new MapSchema<Player>();
+  @type({ map: Coin }) coins = new MapSchema<Coin>();
+}
+
 export class MyState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
   @type({ map: Coin }) coins = new MapSchema<Coin>();

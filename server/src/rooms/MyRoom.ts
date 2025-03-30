@@ -1,5 +1,6 @@
 import { Room, Client } from "@colyseus/core";
-import { MyState, Player, Coin } from "./schema/MyRoomState";
+import { MyState, Player, Coin, FilteredState } from "./schema/MyRoomState";
+import { SpatialHash } from "./utils/SpatialHash";
 
 const WORLD_SIZE = 1000;
 const COIN_COUNT = 5000;
@@ -11,15 +12,20 @@ const MAX_SIZE = 50;
 const DECAY_THRESHOLD = 40; // Start decaying when size exceeds this
 const DECAY_RATE = 0.1; // How much size to lose per second
 const DECAY_INTERVAL = 1 / 60; // Update decay every frame
+const VISIBILITY_RANGE = 500; // Increased visibility range
+const SPATIAL_CELL_SIZE = 200; // Increased cell size for better performance
 
 export class MyRoom extends Room<MyState> {
   private coinRespawnTimers: Map<string, NodeJS.Timeout> = new Map();
   private botUpdateInterval: NodeJS.Timeout | null = null;
   private decayInterval: NodeJS.Timeout | null = null;
+  private spatialHash: SpatialHash;
 
   async onCreate() {
     console.log("Room created");
     this.setState(new MyState());
+    this.spatialHash = new SpatialHash(SPATIAL_CELL_SIZE, WORLD_SIZE);
+
     this.onMessage("move", this.handlePlayerMove.bind(this));
     this.onMessage("restart", this.handleRestart.bind(this));
     this.onMessage("join", this.handleJoin.bind(this));
@@ -38,6 +44,32 @@ export class MyRoom extends Room<MyState> {
     await this.lock();
   }
 
+  // Override the default state synchronization to implement filtered state
+  getState(client: Client): FilteredState {
+    const player = this.state.players.get(client.sessionId);
+    if (!player) return new FilteredState();
+
+    const filteredState = new FilteredState();
+
+    // Get nearby objects using spatial hash
+    const nearbyObjects = this.spatialHash.getNearbyObjects(
+      player.x,
+      player.y,
+      VISIBILITY_RANGE
+    );
+
+    // Add visible objects to filtered state
+    for (const obj of nearbyObjects) {
+      if (obj.type === "player") {
+        filteredState.players.set(obj.id, obj.data as Player);
+      } else {
+        filteredState.coins.set(obj.id, obj.data as Coin);
+      }
+    }
+
+    return filteredState;
+  }
+
   private handleJoin(client: Client) {
     // Create player
     const player = new Player();
@@ -46,6 +78,15 @@ export class MyRoom extends Room<MyState> {
     player.size = 1;
     player.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
     this.state.players.set(client.sessionId, player);
+
+    // Add player to spatial hash
+    this.spatialHash.add({
+      x: player.x,
+      y: player.y,
+      id: client.sessionId,
+      type: "player",
+      data: player,
+    });
   }
 
   // Called when a client joins the room
@@ -66,6 +107,16 @@ export class MyRoom extends Room<MyState> {
   // Called when a client leaves the room
   onLeave(client: Client) {
     console.log("Client left:", client.sessionId);
+    const player = this.state.players.get(client.sessionId);
+    if (player) {
+      this.spatialHash.remove({
+        x: player.x,
+        y: player.y,
+        id: client.sessionId,
+        type: "player",
+        data: player,
+      });
+    }
     this.state.players.delete(client.sessionId);
   }
 
@@ -96,6 +147,16 @@ export class MyRoom extends Room<MyState> {
     coin.y = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
     const coinId = `coin_${this.state.coins.size}`;
     this.state.coins.set(coinId, coin);
+
+    // Add coin to spatial hash
+    this.spatialHash.add({
+      x: coin.x,
+      y: coin.y,
+      id: coinId,
+      type: "coin",
+      data: coin,
+    });
+
     return coinId;
   }
 
@@ -108,6 +169,15 @@ export class MyRoom extends Room<MyState> {
       bot.size = 1;
       bot.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
       this.state.players.set(botId, bot);
+
+      // Add bot to spatial hash
+      this.spatialHash.add({
+        x: bot.x,
+        y: bot.y,
+        id: botId,
+        type: "player",
+        data: bot,
+      });
     }
 
     // Start bot update interval
@@ -136,18 +206,34 @@ export class MyRoom extends Room<MyState> {
           const length = Math.sqrt(dx * dx + dy * dy);
           if (length > 0) {
             const speed = this.calculateSpeed(player.size);
-            player.x += (dx / length) * speed;
-            player.y += (dy / length) * speed;
+            const newX = player.x + (dx / length) * speed;
+            const newY = player.y + (dy / length) * speed;
 
             // Keep bot in bounds
             player.x = Math.max(
               -WORLD_SIZE / 2,
-              Math.min(WORLD_SIZE / 2, player.x)
+              Math.min(WORLD_SIZE / 2, newX)
             );
             player.y = Math.max(
               -WORLD_SIZE / 2,
-              Math.min(WORLD_SIZE / 2, player.y)
+              Math.min(WORLD_SIZE / 2, newY)
             );
+
+            // Update bot in spatial hash
+            this.spatialHash.remove({
+              x: player.x,
+              y: player.y,
+              id: id,
+              type: "player",
+              data: player,
+            });
+            this.spatialHash.add({
+              x: player.x,
+              y: player.y,
+              id: id,
+              type: "player",
+              data: player,
+            });
 
             this.checkCollisions(id);
           }
@@ -205,12 +291,28 @@ export class MyRoom extends Room<MyState> {
 
     if (length > 0) {
       const speed = this.calculateSpeed(player.size);
-      player.x += (dx / length) * speed;
-      player.y += (dy / length) * speed;
+      const newX = player.x + (dx / length) * speed;
+      const newY = player.y + (dy / length) * speed;
 
       // Keep player in bounds
-      player.x = Math.max(-WORLD_SIZE / 2, Math.min(WORLD_SIZE / 2, player.x));
-      player.y = Math.max(-WORLD_SIZE / 2, Math.min(WORLD_SIZE / 2, player.y));
+      player.x = Math.max(-WORLD_SIZE / 2, Math.min(WORLD_SIZE / 2, newX));
+      player.y = Math.max(-WORLD_SIZE / 2, Math.min(WORLD_SIZE / 2, newY));
+
+      // Update player in spatial hash
+      this.spatialHash.remove({
+        x: player.x,
+        y: player.y,
+        id: client.sessionId,
+        type: "player",
+        data: player,
+      });
+      this.spatialHash.add({
+        x: player.x,
+        y: player.y,
+        id: client.sessionId,
+        type: "player",
+        data: player,
+      });
 
       this.checkCollisions(client.sessionId);
     }
