@@ -9,6 +9,7 @@ import {
   getOtherPlayers,
   joinGame,
 } from "../client";
+import { HUD } from "./HUD";
 
 const WORLD_SIZE = 1000;
 
@@ -187,6 +188,7 @@ function Game({ onGameOver }: GameSceneProps) {
         <meshBasicMaterial color="#000" />
       </mesh>
       <Grid size={WORLD_SIZE} divisions={WORLD_SIZE / 5} />
+      <HUD />
     </>
   );
 }
