@@ -1,12 +1,12 @@
-import { Player, Coin } from "../schema/MyRoomState";
+import { Player, Coin, Portal } from "../schema/MyRoomState";
 
-interface SpatialObject {
+type SpatialObject = {
   x: number;
   y: number;
   id: string;
-  type: "player" | "coin";
-  data: Player | Coin;
-}
+  type: "player" | "coin" | "portal";
+  data: Player | Coin | Portal;
+};
 
 export class SpatialHash {
   private cellSize: number;

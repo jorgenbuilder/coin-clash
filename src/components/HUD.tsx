@@ -1,31 +1,45 @@
 import * as THREE from "three";
 import { Hud, OrthographicCamera } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
-import { getPlayerPosition } from "../client";
+import { getPlayerPosition, getPortals } from "../client";
 import { useState } from "react";
 
-const vec = new THREE.Vector2(0, 0);
-
 export function HUD() {
-  const { size } = useThree();
+  const [portals, setPortals] = useState<
+    Array<{ x: number; y: number; timeRemaining: number }>
+  >([]);
+
+  useFrame(() => {
+    setPortals(getPortals());
+  });
 
   return (
     <Hud>
       <OrthographicCamera makeDefault position={[0, 0, 10]} />
-      <mesh position={[0, 0, 0]}>
+      {/* <mesh position={[0, 0, 0]}>
         <planeGeometry args={[size.width - 50, size.height - 50]} />
         <meshBasicMaterial color="white" transparent opacity={0.5} wireframe />
-      </mesh>
+      </mesh> */}
 
-      <WorldPointIndicator worldPosition={vec} />
+      {portals.map((portal, index) => (
+        <WorldPointIndicator
+          key={`portal_${index}`}
+          worldPosition={new THREE.Vector2(portal.x, portal.y)}
+          color="#00ffff"
+          timeRemaining={portal.timeRemaining}
+        />
+      ))}
     </Hud>
   );
 }
 
 function WorldPointIndicator({
   worldPosition,
+  color = "white",
 }: {
   worldPosition: THREE.Vector2;
+  color?: string;
+  timeRemaining?: number;
 }) {
   const { size } = useThree();
   const [screenPos, setScreenPos] = useState<THREE.Vector2>(
@@ -85,9 +99,11 @@ function WorldPointIndicator({
   });
 
   return (
-    <mesh position={[screenPos.x, screenPos.y, 0]}>
-      <sphereGeometry args={[10, 16, 16]} />
-      <meshBasicMaterial color="white" />
-    </mesh>
+    <group position={[screenPos.x, screenPos.y, 0]}>
+      <mesh>
+        <sphereGeometry args={[10, 16, 16]} />
+        <meshBasicMaterial color={color} />
+      </mesh>
+    </group>
   );
 }

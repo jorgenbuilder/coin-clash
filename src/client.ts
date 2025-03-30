@@ -156,3 +156,8 @@ export function getLeaderboard() {
     }))
     .sort((a, b) => b.size - a.size);
 }
+
+export function getPortals() {
+  if (!currentRoom) return [];
+  return Array.from(currentRoom.state.portals.values());
+}

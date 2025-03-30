@@ -7,6 +7,7 @@ import {
   getPlayerPosition,
   getCoins,
   getOtherPlayers,
+  getPortals,
   joinGame,
 } from "../client";
 import { HUD } from "./HUD";
@@ -51,6 +52,9 @@ function Grid({ size, divisions }: { size: number; divisions: number }) {
 
 function Game({ onGameOver }: GameSceneProps) {
   const [coins, setCoins] = useState<Array<{ x: number; y: number }>>([]);
+  const [portals, setPortals] = useState<
+    Array<{ x: number; y: number; size: number; timeRemaining: number }>
+  >([]);
   const [playerPos, setPlayerPos] = useState({
     x: 0,
     y: 0,
@@ -92,6 +96,7 @@ function Game({ onGameOver }: GameSceneProps) {
     setPlayerPos(newPlayerPos);
     setCoins(getCoins());
     setOtherPlayers(getOtherPlayers());
+    setPortals(getPortals());
 
     // Check if player was eaten (size is 0 or undefined)
     if (!newPlayerPos || newPlayerPos.size <= 0) {
@@ -181,6 +186,18 @@ function Game({ onGameOver }: GameSceneProps) {
 
       {/* Coins */}
       <InstancedCoins coins={coins} />
+
+      {/* Portals */}
+      {portals.map((portal, index) => (
+        <mesh
+          key={`portal_${index}`}
+          position={[portal.x, 0, portal.y]}
+          scale={portal.size}
+        >
+          <ringGeometry args={[0.4, 0.5, 32]} />
+          <meshBasicMaterial color="#00ffff" />
+        </mesh>
+      ))}
 
       {/* Floor with Grid */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]}>

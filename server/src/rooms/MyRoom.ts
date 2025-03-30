@@ -1,5 +1,11 @@
 import { Room, Client } from "@colyseus/core";
-import { MyState, Player, Coin, FilteredState } from "./schema/MyRoomState";
+import {
+  MyState,
+  Player,
+  Coin,
+  FilteredState,
+  Portal,
+} from "./schema/MyRoomState";
 import { SpatialHash } from "./utils/SpatialHash";
 
 const WORLD_SIZE = 1000;
@@ -14,11 +20,16 @@ const DECAY_RATE = 0.1; // How much size to lose per second
 const DECAY_INTERVAL = 1 / 60; // Update decay every frame
 const VISIBILITY_RANGE = 500; // Increased visibility range
 const SPATIAL_CELL_SIZE = 200; // Increased cell size for better performance
+const PORTAL_SPAWN_INTERVAL = 30; // Spawn a new portal every 30 seconds
+const PORTAL_LIFETIME = 30; // Portal exists for 30 seconds
+const PORTAL_SIZE = 5;
 
 export class MyRoom extends Room<MyState> {
   private coinRespawnTimers: Map<string, NodeJS.Timeout> = new Map();
   private botUpdateInterval: NodeJS.Timeout | null = null;
   private decayInterval: NodeJS.Timeout | null = null;
+  private portalSpawnInterval: NodeJS.Timeout | null = null;
+  private portalTimers: Map<string, NodeJS.Timeout> = new Map();
   private spatialHash: SpatialHash;
 
   async onCreate() {
@@ -39,6 +50,7 @@ export class MyRoom extends Room<MyState> {
     this.spawnCoins();
     this.spawnBots();
     this.startDecayInterval();
+    this.startPortalSpawnInterval();
 
     // Lock this room to prevent additional rooms from being created
     await this.lock();
@@ -133,6 +145,12 @@ export class MyRoom extends Room<MyState> {
       clearInterval(this.decayInterval);
       this.decayInterval = null;
     }
+    if (this.portalSpawnInterval) {
+      clearInterval(this.portalSpawnInterval);
+      this.portalSpawnInterval = null;
+    }
+    this.portalTimers.forEach((timer) => clearTimeout(timer));
+    this.portalTimers.clear();
   }
 
   private spawnCoins() {
@@ -335,6 +353,11 @@ export class MyRoom extends Room<MyState> {
       player.x = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
       player.y = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
     });
+
+    // Clear all portals and their timers
+    this.state.portals.clear();
+    this.portalTimers.forEach((timer) => clearTimeout(timer));
+    this.portalTimers.clear();
   }
 
   private startDecayInterval() {
@@ -353,6 +376,46 @@ export class MyRoom extends Room<MyState> {
         player.size = Math.max(DECAY_THRESHOLD, player.size - decayAmount);
       }
     });
+  }
+
+  private startPortalSpawnInterval() {
+    this.portalSpawnInterval = setInterval(() => {
+      this.spawnPortal();
+    }, PORTAL_SPAWN_INTERVAL * 1000);
+  }
+
+  private spawnPortal() {
+    const portal = new Portal();
+    portal.x = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
+    portal.y = Math.random() * WORLD_SIZE - WORLD_SIZE / 2;
+    portal.size = PORTAL_SIZE;
+    portal.timeRemaining = PORTAL_LIFETIME;
+
+    const portalId = `portal_${this.state.portals.size}`;
+    this.state.portals.set(portalId, portal);
+
+    // Add portal to spatial hash
+    this.spatialHash.add({
+      x: portal.x,
+      y: portal.y,
+      id: portalId,
+      type: "portal",
+      data: portal,
+    });
+
+    // Set timer to remove portal
+    const timer = setTimeout(() => {
+      this.state.portals.delete(portalId);
+      this.spatialHash.remove({
+        x: portal.x,
+        y: portal.y,
+        id: portalId,
+        type: "portal",
+        data: portal,
+      });
+    }, PORTAL_LIFETIME * 1000);
+
+    this.portalTimers.set(portalId, timer);
   }
 
   private checkCollisions(playerId: string) {
@@ -407,6 +470,26 @@ export class MyRoom extends Room<MyState> {
             this.state.players.delete(otherId);
           }
         }
+      }
+    });
+
+    // Check portal collisions
+    this.state.portals.forEach((portal, portalId) => {
+      const dx = portal.x - player.x;
+      const dy = portal.y - player.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const collisionDistance = portal.size * 0.8; // Only use portal size for collision, with a smaller multiplier
+
+      if (distance < collisionDistance) {
+        // Remove the player from the game
+        this.state.players.delete(playerId);
+        this.spatialHash.remove({
+          x: player.x,
+          y: player.y,
+          id: playerId,
+          type: "player",
+          data: player,
+        });
       }
     });
   }
