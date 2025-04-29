@@ -34,7 +34,7 @@ export class MyRoom extends Room<MyState> {
 
   async onCreate() {
     console.log("Room created");
-    this.setState(new MyState());
+    this.state = new MyState();
     this.spatialHash = new SpatialHash(SPATIAL_CELL_SIZE, WORLD_SIZE);
 
     this.onMessage("move", this.handlePlayerMove.bind(this));
@@ -51,9 +51,6 @@ export class MyRoom extends Room<MyState> {
     this.spawnBots();
     this.startDecayInterval();
     this.startPortalSpawnInterval();
-
-    // Lock this room to prevent additional rooms from being created
-    await this.lock();
   }
 
   // Override the default state synchronization to implement filtered state

@@ -15,12 +15,8 @@ export async function connect() {
   const client = new Client("http://localhost:2567");
 
   // Always join the same room
-  try {
-    currentRoom = await client.joinById<MyState>("main");
-  } catch {
     // If the room doesn't exist, create it with a fixed ID
-    currentRoom = await client.create<MyState>("room", { roomId: "main" });
-  }
+    currentRoom = await client.joinOrCreate<MyState>("room", { roomId: "main" });
 
   if (!currentRoom) return null;
 
